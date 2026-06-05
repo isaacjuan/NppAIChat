@@ -1,0 +1,25 @@
+## Build outputs
+build/
+obj/
+NppAIChat_v1.0.0/
+NppAIChat_v1.0.0.zip
+
+## Visual Studio
+*.user
+*.suo
+*.sdf
+*.opensdf
+*.vcxproj.user
+*.db
+*.VC.db
+ipch/
+.vs/
+
+## Debug/Release artifacts
+*.dll
+*.lib
+*.exp
+*.pdb
+*.ilk
+*.obj
+*.log
