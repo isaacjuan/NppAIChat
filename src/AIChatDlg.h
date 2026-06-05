@@ -7,10 +7,23 @@
 #include "resource.h"
 
 #define THINK_TIMER_ID 1001
+#define WM_CHAT_STREAM (WM_APP + 1)
+#define WM_CHAT_DONE   (WM_APP + 2)
 
 struct BubbleItem {
     std::wstring role;
     std::wstring content;
+};
+
+struct ChatRequest {
+    std::vector<ChatMessage> messages;
+    std::wstring endpoint;
+    std::wstring apiKey;
+    std::wstring model;
+    std::wstring systemPrompt;
+    double temperature;
+    int maxTokens;
+    HWND hWnd;
 };
 
 class AIChatDlg {
@@ -46,9 +59,14 @@ private:
     void UpdateDarkMode();
     std::wstring GetCurrentEditorSelection();
 
+    void OnChatStream(const std::string& content);
+    void OnChatDone(bool truncated, const std::string& error);
+
     int CalcBubbleHeight(const std::wstring& text, int listWidth);
     void DrawBubble(HDC hdc, const RECT& rect, const std::wstring& role,
                     const std::wstring& text, bool darkMode);
+
+    static unsigned __stdcall ChatThreadProc(void* lpParam);
 
     HWND m_hWnd = nullptr;
     HWND m_hNpp = nullptr;
@@ -72,4 +90,6 @@ private:
     int m_streamItemIndex = -1;
     HBRUSH m_hBgBrush = nullptr;
     std::string m_streamBuffer;
+    std::string m_pendingError;
+    bool m_hasResponse = false;
 };

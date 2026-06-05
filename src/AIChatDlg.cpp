@@ -3,6 +3,7 @@
 #include <string>
 #include <sstream>
 #include <commctrl.h>
+#include <process.h>
 
 #pragma comment(lib, "comctl32.lib")
 
@@ -107,6 +108,19 @@ INT_PTR AIChatDlg::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam)
 {
     switch (msg)
     {
+    case WM_CHAT_STREAM:
+    {
+        std::unique_ptr<std::string> data(reinterpret_cast<std::string*>(lParam));
+        OnChatStream(*data);
+        break;
+    }
+
+    case WM_CHAT_DONE:
+    {
+        OnChatDone(wParam != 0, std::string());
+        break;
+    }
+
     case WM_SIZE:
         OnSize();
         break;
@@ -360,8 +374,7 @@ void AIChatDlg::OnThinkTimer()
     m_thinkDotCount = (m_thinkDotCount + 1) % 4;
     std::wstring dots;
     for (int i = 0; i < m_thinkDotCount; ++i) dots += L".";
-    std::wstring modelName(m_httpClient.GetModel().begin(), m_httpClient.GetModel().end());
-    SetStatus(L"Thinking" + dots + L"  [" + modelName + L"]");
+    SetStatus(L"Thinking" + dots + L"  [" + m_httpClient.GetModel() + L"]");
 }
 
 std::wstring AIChatDlg::GetCurrentEditorSelection()
@@ -457,8 +470,8 @@ void AIChatDlg::OnSend()
 
     m_streaming = true;
     m_streamBuffer.clear();
-
-    bool firstChunk = true;
+    m_pendingError.clear();
+    m_hasResponse = false;
 
     std::vector<ChatMessage> apiMessages;
     std::wstring sysPrompt = m_httpClient.GetSystemPrompt();
@@ -474,72 +487,134 @@ void AIChatDlg::OnSend()
     }
     apiMessages.insert(apiMessages.end(), m_messages.begin(), m_messages.end());
 
-    m_httpClient.SendChat(apiMessages, [this, firstChunk](const std::string& content, bool done) mutable
+    ChatRequest* req = new ChatRequest;
+    req->messages = std::move(apiMessages);
+    req->endpoint = m_httpClient.GetEndpoint();
+    req->apiKey = m_httpClient.GetApiKey();
+    req->model = m_httpClient.GetModel();
+    req->systemPrompt = m_httpClient.GetSystemPrompt();
+    req->temperature = m_httpClient.GetTemperature();
+    req->maxTokens = m_httpClient.GetMaxTokens();
+    req->hWnd = m_hWnd;
+
+    unsigned threadId;
+    HANDLE hThread = (HANDLE)_beginthreadex(nullptr, 0, ChatThreadProc, req, 0, &threadId);
+    if (hThread) CloseHandle(hThread);
+}
+
+unsigned __stdcall AIChatDlg::ChatThreadProc(void* lpParam)
+{
+    std::unique_ptr<ChatRequest> req(static_cast<ChatRequest*>(lpParam));
+
+    try
     {
-        if (done)
+        HttpClient client;
+        client.SetEndpoint(req->endpoint);
+        client.SetApiKey(req->apiKey);
+        client.SetModel(req->model);
+        client.SetSystemPrompt(req->systemPrompt);
+        client.SetTemperature(req->temperature);
+        client.SetMaxTokens(req->maxTokens);
+
+        client.SendChat(req->messages,
+            [hWnd = req->hWnd, &client](const std::string& content, bool done)
         {
-            if (m_streamItemIndex == -1) return;
-            StopThinking();
-            if (!m_streamBuffer.empty())
+            if (done)
             {
-                ChatMessage asstMsg;
-                asstMsg.role = "assistant";
-                asstMsg.content = m_streamBuffer;
-                m_messages.push_back(asstMsg);
+                PostMessage(hWnd, WM_CHAT_DONE, client.WasTruncated() ? 1 : 0, 0);
             }
-            else if (!content.empty() && !m_streaming)
+            else
             {
-                std::wstring werror = Utf8ToWide(content);
-                BubbleItem errorItem;
-                errorItem.role = L"Error";
-                errorItem.content = werror;
-                m_bubbles.push_back(errorItem);
-                int idx = (int)SendMessage(m_hChatList, LB_ADDSTRING, 0, (LPARAM)L"");
-                SendMessage(m_hChatList, LB_SETITEMDATA, idx, (LPARAM)(m_bubbles.size() - 1));
-                SendMessage(m_hChatList, LB_SETTOPINDEX, idx, 0);
+                auto* s = new (std::nothrow) std::string(content);
+                if (s)
+                    PostMessage(hWnd, WM_CHAT_STREAM, 0, (LPARAM)s);
             }
-            bool hasResponse = !m_streamBuffer.empty();
+        });
+    }
+    catch (...)
+    {
+        PostMessage(req->hWnd, WM_CHAT_DONE, 0, 0);
+    }
 
-            if (hasResponse && m_httpClient.WasTruncated())
-            {
-                std::wstring warn = L"\n\n*⚠ Response truncated (max_tokens limit reached). Increase in Config or split your request.*";
-                m_bubbles[m_streamItemIndex].content += warn;
-                RECT rc;
-                GetClientRect(m_hChatList, &rc);
-                int newH = CalcBubbleHeight(m_bubbles[m_streamItemIndex].content, rc.right - rc.left);
-                SendMessage(m_hChatList, LB_SETITEMHEIGHT, m_streamItemIndex, MAKELPARAM(newH, 0));
-                InvalidateRect(m_hChatList, nullptr, TRUE);
-            }
+    return 0;
+}
 
-            m_streamBuffer.clear();
-            m_streaming = false;
-            m_streamItemIndex = -1;
-            EnableWindow(m_hSendBtn, TRUE);
-            EnableWindow(m_hInsertBtn, hasResponse);
-            SetStatus(L"Ready.");
+void AIChatDlg::OnChatStream(const std::string& content)
+{
+    if (!m_streaming || m_streamItemIndex < 0 || m_streamItemIndex >= (int)m_bubbles.size())
+        return;
+
+    if (m_thinking)
+        StopThinking();
+
+    try
+    {
+        m_streamBuffer += content;
+        std::wstring wtext = Utf8ToWide(m_streamBuffer);
+        if (m_streamItemIndex >= 0 && m_streamItemIndex < (int)m_bubbles.size())
+        {
+            m_bubbles[m_streamItemIndex].content = wtext;
+            RECT rc;
+            GetClientRect(m_hChatList, &rc);
+            int newH = CalcBubbleHeight(wtext, rc.right - rc.left);
+            SendMessage(m_hChatList, LB_SETITEMHEIGHT, m_streamItemIndex, MAKELPARAM(newH, 0));
+            InvalidateRect(m_hChatList, nullptr, TRUE);
+            int count = (int)SendMessage(m_hChatList, LB_GETCOUNT, 0, 0);
+            SendMessage(m_hChatList, LB_SETTOPINDEX, count - 1, 0);
+        }
+    }
+    catch (...)
+    {
+    }
+}
+
+void AIChatDlg::OnChatDone(bool truncated, const std::string& error)
+{
+    if (m_streamItemIndex == -1) return;
+
+    StopThinking();
+
+    if (!m_streamBuffer.empty())
+    {
+        ChatMessage asstMsg;
+        asstMsg.role = "assistant";
+        asstMsg.content = m_streamBuffer;
+        m_messages.push_back(asstMsg);
+        m_hasResponse = true;
+
+        if (truncated)
+        {
+            std::wstring warn = L"\n\n*⚠ Response truncated (max_tokens limit reached). Increase in Config or split your request.*";
+            m_bubbles[m_streamItemIndex].content += warn;
+        }
+    }
+    else if (m_streamItemIndex >= 0 && m_streamItemIndex < (int)m_bubbles.size())
+    {
+        if (!error.empty() && error.find("Error") != std::string::npos)
+        {
+            m_bubbles[m_streamItemIndex].content = Utf8ToWide(error);
         }
         else
         {
-            if (firstChunk)
-            {
-                StopThinking();
-                firstChunk = false;
-            }
-            m_streamBuffer += content;
-            std::wstring wtext = Utf8ToWide(m_streamBuffer);
-            if (m_streamItemIndex >= 0 && m_streamItemIndex < (int)m_bubbles.size())
-            {
-                m_bubbles[m_streamItemIndex].content = wtext;
-                RECT rc;
-                GetClientRect(m_hChatList, &rc);
-                int newH = CalcBubbleHeight(wtext, rc.right - rc.left);
-                SendMessage(m_hChatList, LB_SETITEMHEIGHT, m_streamItemIndex, MAKELPARAM(newH, 0));
-                InvalidateRect(m_hChatList, nullptr, TRUE);
-                int count = (int)SendMessage(m_hChatList, LB_GETCOUNT, 0, 0);
-                SendMessage(m_hChatList, LB_SETTOPINDEX, count - 1, 0);
-            }
+            m_bubbles[m_streamItemIndex].content = L"[Connection error or empty response]";
         }
-    });
+    }
+
+    if (m_streamItemIndex >= 0 && m_streamItemIndex < (int)m_bubbles.size())
+    {
+        RECT rc;
+        GetClientRect(m_hChatList, &rc);
+        int newH = CalcBubbleHeight(m_bubbles[m_streamItemIndex].content, rc.right - rc.left);
+        SendMessage(m_hChatList, LB_SETITEMHEIGHT, m_streamItemIndex, MAKELPARAM(newH, 0));
+        InvalidateRect(m_hChatList, nullptr, TRUE);
+    }
+
+    m_streamBuffer.clear();
+    m_streaming = false;
+    m_streamItemIndex = -1;
+    EnableWindow(m_hSendBtn, TRUE);
+    EnableWindow(m_hInsertBtn, m_hasResponse);
+    SetStatus(L"Ready.");
 }
 
 void AIChatDlg::OnInsert()
