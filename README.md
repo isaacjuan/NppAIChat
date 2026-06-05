@@ -42,7 +42,58 @@ Open **Plugins → AI Chat → Configure** to set:
 | Temperature | Randomness (0.0 – 2.0) | `0.7` |
 | Max Tokens | Max response length | `16384` |
 
-> **Note:** For DeepSeek, set the endpoint to `https://api.deepseek.com` and model to `deepseek-v4-flash`. The path `/chat/completions` is appended automatically.
+> **Note:** The path `/chat/completions` is appended automatically to the endpoint URL. Just provide the base URL.
+
+## Provider Setup Guide
+
+### DeepSeek (default)
+| Setting | Value |
+|---|---|
+| API Endpoint | `https://api.deepseek.com` |
+| Model | `deepseek-v4-flash` |
+| API Key | Get one at [platform.deepseek.com](https://platform.deepseek.com) |
+
+### OpenAI
+| Setting | Value |
+|---|---|
+| API Endpoint | `https://api.openai.com` |
+| Model | `gpt-4o` or `gpt-4o-mini` or `gpt-3.5-turbo` |
+| API Key | Get one at [platform.openai.com](https://platform.openai.com/api-keys) |
+
+### Ollama (local, free)
+1. Install Ollama from [ollama.com](https://ollama.com) and pull a model, e.g. `ollama pull llama3.2`
+2. Ensure Ollama is running (`ollama serve`)
+3. Configure the plugin:
+| Setting | Value |
+|---|---|
+| API Endpoint | `http://localhost:11434` |
+| Model | `llama3.2` (or any model you pulled) |
+| API Key | *(leave empty)* |
+
+> Note: Ollama uses HTTP (not HTTPS). The plugin will use plain HTTP for localhost endpoints.
+
+### GitHub Models
+| Setting | Value |
+|---|---|
+| API Endpoint | `https://models.inference.ai.azure.com` |
+| Model | `gpt-4o` or `gpt-4o-mini` |
+| API Key | Get one from [GitHub Marketplace → Models](https://github.com/marketplace/models) |
+
+### Anthropic (via third-party proxy)
+Anthropic's API is **not** OpenAI-compatible by default. Use a proxy like [openrouter.ai](https://openrouter.ai) or [litellm](https://github.com/BerriAI/litellm):
+
+| Setting | Value |
+|---|---|
+| API Endpoint | `https://openrouter.ai/api/v1` |
+| Model | `anthropic/claude-3.5-sonnet` |
+| API Key | Get one at [openrouter.ai](https://openrouter.ai/keys) |
+
+### Azure OpenAI
+| Setting | Value |
+|---|---|
+| API Endpoint | `https://YOUR_RESOURCE.openai.azure.com` |
+| Model | Your deployment name (e.g. `gpt-4o-deployment`) |
+| API Key | Get one from [Azure Portal](https://portal.azure.com) → Your OpenAI resource → Keys and Endpoint |
 
 ## Usage
 
