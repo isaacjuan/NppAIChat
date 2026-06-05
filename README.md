@@ -105,6 +105,18 @@ Anthropic's API is **not** OpenAI-compatible by default. Use a proxy like [openr
 | Copy a message | Right-click a bubble → **Copy Message**, or double-click to open a view dialog |
 | Clear chat | Click **Clear** |
 
+### Working with selected code
+
+Two ways to ask the AI about selected lines:
+
+1. **Menu** — Select lines in the editor, then **Plugins → AI Chat → Send Selection**. The code is sent as context so the AI can analyze it. You can also type a question in the input box before clicking Send — both the question and the code are sent together.
+
+2. **Auto-context on Send** — Just select text in the editor and click **Send** (or press Enter). The plugin auto-detects the selection and includes it as context. If you typed a question, the code is prepended to it. If the input is empty, a generic "analyze this code" prompt is used.
+
+The selected code is sent to the API but **not shown** in the chat window — only your message (or a placeholder) appears, keeping the conversation clean.
+
+> **Tip:** Use this for code review, asking for explanations, refactoring suggestions, or finding bugs in selected lines.
+
 ## Building from Source
 
 Requires Visual Studio 2022 (any edition) with C++ desktop workload.
