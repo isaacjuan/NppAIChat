@@ -118,6 +118,18 @@ Open `NppAIChat.sln`, set configuration to **Release x64**, and build.
 
 The plugin DLL is output to `build\x64\Release\NppAIChat.dll`.
 
+## Contributing
+
+**Issues** — Found a bug or have a suggestion? Open an [issue](https://github.com/isaacjuan/NppAIChat/issues). Comments from users are welcome.
+
+**Pull Requests** — Want to contribute code?
+1. Fork the repository.
+2. Create a branch in your fork (`git checkout -b my-feature`).
+3. Commit your changes.
+4. Push to your fork and open a Pull Request.
+
+All PRs are reviewed before merging.
+
 ## License
 
 MIT

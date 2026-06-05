@@ -15,6 +15,9 @@ NppAIChat_v1.0.0.zip
 ipch/
 .vs/
 
+## Cloned repos
+nppPluginList/
+
 ## Debug/Release artifacts
 *.dll
 *.lib
